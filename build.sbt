@@ -99,7 +99,7 @@ lazy val supportMsgpack = support("msgpack")
 
 lazy val supportMurmurhash = support("murmurhash")
 
-lazy val benchmark = (project in file("benchmark"))
+/*lazy val benchmark = (project in file("benchmark"))
   .dependsOn(supportSpray, supportScalaJson, supportMsgpack)
   .enablePlugins(JmhPlugin)
   .settings(
@@ -108,4 +108,4 @@ lazy val benchmark = (project in file("benchmark"))
     crossScalaVersions -= scala212,
     javaOptions in (Jmh, run) ++= Seq("-Xmx1G", "-Dfile.encoding=UTF8"),
     noPublish
-  )
+  )*/
