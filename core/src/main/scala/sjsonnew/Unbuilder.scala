@@ -86,12 +86,12 @@ class Unbuilder[J](facade: Facade[J]) {
   def beginPreObject(js: J): Int =
     state match {
       case Begin | InArray | InObject =>
-        val (fields, names) = facade.extractObject(js)
-        val context = UnbuilderContext.ObjectContext(fields, names)
+        val accessor = facade.accessFields(js)
+        val context = UnbuilderContext.ObjectContext(accessor, accessor.fieldNames)
         contexts ::= context
         precontext = Some(UnbuilderPrecontext(js, mutable.ArrayBuffer.empty))
         state = InObject
-        context.fields.size
+        context.fieldsSize
       case End => stateError(End)
     }
 
@@ -113,23 +113,25 @@ class Unbuilder[J](facade: Facade[J]) {
   def beginObject(js: J, fieldNames: Option[Vector[String]]): Int =
     state match {
       case Begin | InArray | InObject =>
-        val (fields, names) = facade.extractObject(js)
         val context0 =
           precontext match {
             case Some(pre) if pre.js == js =>
+              val accessor = facade.accessFields(js)
               precontext = None
-              val excludeKeys = pre.names.toSet
-              UnbuilderContext.ObjectContext(fields filterKeys { k => !excludeKeys(k) }, names diff excludeKeys.toVector)
-            case _ => UnbuilderContext.ObjectContext(fields, names)
+              //val excludeKeys = pre.names.toSet
+              UnbuilderContext.ObjectContext(accessor, accessor.fieldNames filter { k => !pre.names.contains(k) })
+            case _ =>
+              val accessor = facade.accessFields(js)
+              UnbuilderContext.ObjectContext(accessor, accessor.fieldNames)
           }
         val context =
           fieldNames match {
-            case Some(fn) => context0.copy(names = fn)
+            case Some(fn) => context0.withNames(fn)
             case _        => context0
           }
         contexts ::= context
         state = InObject
-        context.fields.size
+        context.fieldsSize
       case End => stateError(End)
     }
 
@@ -184,7 +186,7 @@ class Unbuilder[J](facade: Facade[J]) {
           case None => // do nothing
         }
         contexts.head match {
-          case ctx: UnbuilderContext.ObjectContext[J] => ctx.fields.get(name)
+          case ctx: UnbuilderContext.ObjectContext[J] => ctx.get(name)
           case x => deserializationError(s"Unexpected context: $x")
         }
       case x => stateError(x)
@@ -233,16 +235,42 @@ object UnbuilderState {
 
 private[sjsonnew] trait UnbuilderContext[J]
 private[sjsonnew] object UnbuilderContext {
-  case class ObjectContext[J](fields: Map[String, J], names: Vector[String]) extends UnbuilderContext[J] {
-    private val size = names.size
+  trait ObjectContext[J] extends UnbuilderContext[J] {
+    def names: Seq[String]
+    def fieldsSize: Int
+    def withNames(newNames: Seq[String]): ObjectContext[J]
+    def get(name: String): Option[J]
+
+    //def hasNext: Boolean
+    //def next: (String, Option[J])
+
+    private val size = fieldsSize
     private var idx: Int = 0
     def hasNext: Boolean = idx < size
     def next: (String, Option[J]) = {
       val name = names(idx)
-      val x = fields.get(names(idx))
+      val x = get(names(idx))
       idx = idx + 1
       (name, x)
     }
+  }
+  object ObjectContext {
+    def apply[J](fields: Map[String, J], names: Seq[String]): ObjectContext[J] =
+      ObjectContextImpl(fields, names)
+
+    def apply[J](accessor: FieldAccessor[J], names: Seq[String]): ObjectContext[J] =
+      ObjectContextAccessorImpl(accessor, names)
+  }
+
+  private case class ObjectContextAccessorImpl[J](accessor: FieldAccessor[J], names: Seq[String]) extends ObjectContext[J] {
+    override def fieldsSize: Int = names.size
+    override def withNames(newNames: Seq[String]): ObjectContext[J] = ObjectContext(accessor, newNames)
+    override def get(name: String): Option[J] = accessor.get(name)
+  }
+  private case class ObjectContextImpl[J](fields: Map[String, J], names: Seq[String]) extends ObjectContext[J] {
+    override def fieldsSize: Int = fields.size
+    override def withNames(newNames: Seq[String]): ObjectContext[J] = this.copy(names = newNames)
+    override def get(name: String): Option[J] = fields.get(name)
   }
   case class ArrayContext[J](elements: Vector[J]) extends UnbuilderContext[J] {
     private var idx: Int = 0

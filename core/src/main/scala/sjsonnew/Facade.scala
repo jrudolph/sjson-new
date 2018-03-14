@@ -79,6 +79,15 @@ trait ExtractorFacade[J] {
   def extractString(value: J): String
   def extractArray(value: J): Vector[J]
   def extractObject(value: J): (Map[String, J], Vector[String])
+
+  def accessFields(value: J): FieldAccessor[J] = null
+}
+
+trait FieldAccessor[J] {
+  def fieldNames: Seq[String]
+  def fieldsSize: Int
+  def get(field: String): Option[J]
+  def apply(field: String): J = get(field).get
 }
 
 /**

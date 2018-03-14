@@ -4,6 +4,8 @@ package support.scalajson.unsafe
 import scala.collection.mutable
 import shaded.scalajson.ast.unsafe._
 
+import scala.annotation.tailrec
+
 object Converter extends SupportConverter[JValue] {
   implicit val facade: Facade[JValue] = FacadeImpl
   private object FacadeImpl extends Facade[JValue] {
@@ -112,5 +114,28 @@ object Converter extends SupportConverter[JValue] {
         case JNull => (Map.empty, Vector.empty)
         case x => deserializationError("Expected Map as JsObject, but got " + x)
       }
+
+    override def accessFields(value: JValue): FieldAccessor[JValue] =
+      value match {
+        case o: JObject => ScalaJsonFieldAccessor(o.value)
+        case JNull => ScalaJsonFieldAccessor(Array.empty)
+        case x => deserializationError("Expected Map as JsObject, but got " + x)
+      }
+  }
+}
+
+case class ScalaJsonFieldAccessor(fields: Array[JField]) extends FieldAccessor[JValue] {
+  lazy val fieldNames: Seq[String] = fields.map(_.field)
+  override def fieldsSize: Int = fields.length
+  override def get(field: String): Option[JValue] = {
+    @tailrec def find(idx: Int): Option[JValue] =
+      if (idx < fields.size) {
+        val f = fields(idx)
+        if (f.field == field) Some(f.value)
+        else find(idx + 1)
+      } else
+        None
+
+    find(0)
   }
 }
